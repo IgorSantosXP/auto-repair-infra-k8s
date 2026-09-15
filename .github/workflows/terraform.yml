@@ -1,0 +1,69 @@
+name: Terraform
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  AWS_REGION: us-east-1
+  TF_ROLE: arn:aws:iam::814623398856:role/auto-repair-github-actions
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        run: terraform plan -input=false -no-color
+
+  apply:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Apply
+        run: terraform apply -input=false -auto-approve
+        env:
+          TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
