@@ -31,6 +31,15 @@ module "eks" {
   }
 
   node_security_group_additional_rules = {
+    metrics_server = {
+      description                   = "Cluster API to metrics-server secure port"
+      protocol                      = "tcp"
+      from_port                     = 10251
+      to_port                       = 10251
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+
     nlb_health_check = {
       description = "NLB health check and traffic to the API NodePort"
       protocol    = "tcp"
