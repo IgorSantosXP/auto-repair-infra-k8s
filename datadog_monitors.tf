@@ -2,16 +2,18 @@ resource "datadog_monitor" "service_order_failures" {
   count = local.datadog_enabled ? 1 : 0
 
   name    = "[Auto Repair] Falhas no processamento de ordens de serviço"
-  type    = "log alert"
+  type    = "metric alert"
   message = <<-EOT
-    Erros no processamento de ordens de serviço nos últimos 5 minutos.
+    A aplicação registrou falhas ao criar ou transicionar ordens de serviço nos
+    últimos 10 minutos. As tags `stage` e `reason` indicam onde falhou —
+    criação, transição de status ou reserva de estoque.
 
-    Verificar o Log Explorer filtrando por `service:auto-repair-api status:error`
-    e seguir o `request_id` até o trace no APM.
+    Cruzar com o Log Explorer (`service:auto-repair-api status:error`) e seguir o
+    `request_id` até o trace no APM.
     ${local.alert_target}
   EOT
 
-  query = "logs(\"service:auto-repair-api status:error\").index(\"*\").rollup(\"count\").last(\"5m\") > 5"
+  query = "sum(last_10m):sum:auto_repair.service_order.failed{*}.as_count() > 5"
 
   monitor_thresholds {
     critical = 5

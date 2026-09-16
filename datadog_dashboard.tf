@@ -68,6 +68,21 @@ resource "datadog_dashboard" "operations" {
 
   widget {
     timeseries_definition {
+      title = "Falhas no processamento de ordens de serviço"
+
+      request {
+        q            = "sum:auto_repair.service_order.failed{*} by {stage,reason}.as_count()"
+        display_type = "bars"
+
+        style {
+          palette = "warm"
+        }
+      }
+    }
+  }
+
+  widget {
+    timeseries_definition {
       title = "Erros e falhas nas integrações"
 
       request {
