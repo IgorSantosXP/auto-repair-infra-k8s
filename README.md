@@ -145,6 +145,11 @@ Em resumo:
   Gateway, que precisa do ARN do listener.
 - **Lock de estado nativo do S3** (`use_lockfile`), dispensando DynamoDB.
 
+## Documentação arquitetural
+
+Diagramas, ADRs, RFCs e modelo de dados do sistema completo:
+**[índice da documentação](https://github.com/IgorSantosXP/auto-repair-api/tree/main/docs)**.
+
 ## API
 
 A collection da API fica no repositório da aplicação:
