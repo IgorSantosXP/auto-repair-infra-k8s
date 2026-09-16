@@ -10,7 +10,22 @@ module "eks" {
   control_plane_subnet_ids = concat(module.vpc.public_subnets, module.vpc.private_subnets)
 
   cluster_endpoint_public_access           = true
-  enable_cluster_creator_admin_permissions = true
+  enable_cluster_creator_admin_permissions = false
+
+  access_entries = {
+    operator = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/auto-repair-deploy"
+
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
 
   cluster_addons = {
     coredns        = {}
