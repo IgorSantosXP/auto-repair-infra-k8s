@@ -36,6 +36,6 @@ provider "datadog" {
 }
 
 locals {
-  datadog_enabled = var.datadog_api_key != "" && var.datadog_app_key != ""
+  datadog_enabled = nonsensitive(var.datadog_api_key != "" && var.datadog_app_key != "")
   alert_target    = var.datadog_alert_email == "" ? "" : "@${var.datadog_alert_email}"
 }
