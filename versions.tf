@@ -22,5 +22,9 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.35"
     }
+    datadog = {
+      source  = "DataDog/datadog"
+      version = "~> 3.50"
+    }
   }
 }

@@ -63,3 +63,14 @@ variable "datadog_site" {
   type    = string
   default = "datadoghq.com"
 }
+
+variable "datadog_app_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "datadog_alert_email" {
+  type    = string
+  default = ""
+}

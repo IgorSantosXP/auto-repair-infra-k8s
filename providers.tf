@@ -27,3 +27,15 @@ provider "helm" {
     token                  = data.aws_eks_cluster_auth.this.token
   }
 }
+
+provider "datadog" {
+  api_key  = var.datadog_api_key == "" ? null : var.datadog_api_key
+  app_key  = var.datadog_app_key == "" ? null : var.datadog_app_key
+  api_url  = "https://api.${var.datadog_site}/"
+  validate = var.datadog_api_key != "" && var.datadog_app_key != ""
+}
+
+locals {
+  datadog_enabled = var.datadog_api_key != "" && var.datadog_app_key != ""
+  alert_target    = var.datadog_alert_email == "" ? "" : "@${var.datadog_alert_email}"
+}

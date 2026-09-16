@@ -49,3 +49,7 @@ output "api_node_port" {
 output "api_gateway_execution_arn" {
   value = aws_apigatewayv2_api.this.execution_arn
 }
+
+output "datadog_dashboard_url" {
+  value = local.datadog_enabled ? "https://app.${var.datadog_site}/dashboard/${datadog_dashboard.operations[0].id}" : "Datadog desativado — informe datadog_api_key e datadog_app_key"
+}
