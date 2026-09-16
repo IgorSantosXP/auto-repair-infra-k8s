@@ -41,6 +41,10 @@ jobs:
 
       - name: Plan
         run: terraform plan -input=false -no-color
+        env:
+          TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+          TF_VAR_datadog_alert_email: ${{ secrets.DATADOG_ALERT_EMAIL }}
 
   apply:
     needs: validate
@@ -67,3 +71,5 @@ jobs:
         run: terraform apply -input=false -auto-approve
         env:
           TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+          TF_VAR_datadog_alert_email: ${{ secrets.DATADOG_ALERT_EMAIL }}
