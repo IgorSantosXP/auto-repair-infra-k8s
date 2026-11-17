@@ -66,5 +66,16 @@ module "eks" {
       type        = "ingress"
       cidr_blocks = [var.vpc_cidr]
     }
+
+    # kube-proxy forwards NodePort traffic to pods on other nodes; the module's
+    # default node-to-node rule only covers ephemeral ports (1025-65535).
+    node_to_node_pods = {
+      description = "Pod HTTP traffic between nodes"
+      protocol    = "tcp"
+      from_port   = 80
+      to_port     = 80
+      type        = "ingress"
+      self        = true
+    }
   }
 }
