@@ -1,5 +1,7 @@
-resource "aws_ecr_repository" "api" {
-  name                 = "${var.project}-api"
+resource "aws_ecr_repository" "service" {
+  for_each = local.services
+
+  name                 = each.value.ecr_repository
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
@@ -8,8 +10,10 @@ resource "aws_ecr_repository" "api" {
   }
 }
 
-resource "aws_ecr_lifecycle_policy" "api" {
-  repository = aws_ecr_repository.api.name
+resource "aws_ecr_lifecycle_policy" "service" {
+  for_each = local.services
+
+  repository = aws_ecr_repository.service[each.key].name
 
   policy = jsonencode({
     rules = [{
@@ -23,4 +27,14 @@ resource "aws_ecr_lifecycle_policy" "api" {
       action = { type = "expire" }
     }]
   })
+}
+
+moved {
+  from = aws_ecr_repository.api
+  to   = aws_ecr_repository.service["os"]
+}
+
+moved {
+  from = aws_ecr_lifecycle_policy.api
+  to   = aws_ecr_lifecycle_policy.service["os"]
 }

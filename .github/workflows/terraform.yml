@@ -2,6 +2,7 @@ name: Terraform
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -27,6 +28,26 @@ jobs:
       - name: Check formatting
         run: terraform fmt -check -recursive
 
+      - name: Init (no backend)
+        run: terraform init -input=false -backend=false
+
+      - name: Validate
+        run: terraform validate
+
+  # Steps that talk to AWS only run while the environment is up
+  # (repository variable DEPLOY_ENABLED=true), so the account can stay
+  # torn down between demos without red pipelines.
+  plan:
+    needs: validate
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -36,9 +57,6 @@ jobs:
       - name: Init
         run: terraform init -input=false
 
-      - name: Validate
-        run: terraform validate
-
       - name: Plan
         run: terraform plan -input=false -no-color
         env:
@@ -47,8 +65,8 @@ jobs:
           TF_VAR_datadog_alert_email: ${{ secrets.DATADOG_ALERT_EMAIL }}
 
   apply:
-    needs: validate
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:

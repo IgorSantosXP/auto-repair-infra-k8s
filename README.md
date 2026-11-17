@@ -1,10 +1,12 @@
 # auto-repair-infra-k8s
 
 Infraestrutura de rede, cluster Kubernetes e borda de entrada do sistema de
-gestão de oficina mecânica (Tech Challenge — Fase 3, FIAP postech).
+gestão de oficina mecânica (Tech Challenge, fases 3 e 4, FIAP postech).
 
-Este é o **primeiro** dos quatro repositórios a ser aplicado: ele cria a VPC e
-publica, via estado remoto, as saídas que os demais consomem.
+Este é o **primeiro** repositório a ser aplicado: ele cria a VPC e a plataforma
+compartilhada pelos três microsserviços (OS, Billing e Execution) e publica, via
+estado remoto, as saídas que os demais consomem. Ele só cria o que é comum: cada
+serviço provisiona a própria fila, DLQ, IAM e banco no seu repositório.
 
 ## Propósito
 
@@ -12,12 +14,14 @@ publica, via estado remoto, as saídas que os demais consomem.
 |---|---|
 | VPC | Rede isolada, 2 AZs, subnets públicas (nós) e privadas (RDS, Lambda, NLB) |
 | EKS | Cluster Kubernetes gerenciado, com node group e metrics-server para o HPA |
-| ECR | Registro da imagem Docker da aplicação Rails |
-| NLB interno | Balanceador que recebe o tráfego do API Gateway e entrega ao NodePort dos nós |
-| API Gateway (HTTP API) | Borda pública: roteia `/auth/cpf` para a Lambda e `/api/*` para o cluster |
+| ECR | Um repositório de imagem por serviço (`auto-repair-api`, `-billing-service`, `-execution-service`) |
+| NLB interno | Recebe o tráfego do API Gateway, com um listener por serviço (OS :80, Billing :8081, Execution :8082) apontando para o NodePort de cada um (30080, 30081, 30082) |
+| API Gateway (HTTP API) | Borda pública: `/auth/cpf` para a Lambda; `/api/v1/budgets`, `/api/v1/payments` e `/webhooks/mercadopago` para o Billing; `/api/v1/parts` e `/api/v1/executions` para o Execution; o restante de `/api/*` para o OS |
+| SNS | Um tópico de eventos da saga por ambiente (`auto-repair-<env>-events`); as filas de cada serviço assinam com filtro por `destination` |
 | VPC Link | Ponte entre o API Gateway e o NLB interno |
-| IAM OIDC | Role assumida pelo GitHub Actions dos quatro repositórios, sem chave de longa duração |
-| Datadog Agent | DaemonSet de métricas, logs e APM (opcional, ativado por variável) |
+| IAM OIDC | Role assumida pelo GitHub Actions de todos os repositórios, sem chave de longa duração |
+| EKS Pod Identity | Agente instalado no cluster; cada serviço associa a própria role ao seu ServiceAccount |
+| Datadog | Agent (DaemonSet de métricas, logs e APM), dashboards da aplicação e da saga e monitores (falha de compensação, pico de compensações, falhas de consumo, uptime, latência) |
 
 ## Arquitetura
 
@@ -26,10 +30,10 @@ flowchart TB
     Cliente([Cliente]) --> AGW[API Gateway<br/>HTTP API]
 
     AGW -->|POST /auth/cpf| LMB[Lambda de autenticação<br/>auto-repair-auth-lambda]
-    AGW -->|ANY /api/*| VL[VPC Link]
+    AGW -->|/api/*, /webhooks/*| VL[VPC Link]
 
     VL --> NLB[NLB interno<br/>subnets privadas]
-    NLB -->|NodePort 30080| NG
+    NLB -->|:80 → NodePort 30080 OS<br/>:8081 → 30081 Billing<br/>:8082 → 30082 Execution| NG
 
     subgraph VPC["VPC 10.0.0.0/16"]
         subgraph Pub["Subnets públicas"]
@@ -47,16 +51,17 @@ flowchart TB
     NG -.métricas, logs, traces.-> DD([Datadog])
 
     subgraph EKS["Cluster EKS"]
-        DEP[Deployment api] --> HPA[HPA<br/>CPU e memória]
-        DEP --> SVC[Service NodePort]
+        DEP[OS, Billing e Execution<br/>API + worker cada] --> HPA[HPA<br/>CPU e memória]
+        DEP --> SVC[Services NodePort]
     end
 
     NG --- EKS
+    DEP <-->|comandos e eventos da saga| SNS((SNS por ambiente<br/>+ SQS por serviço))
 ```
 
 ## Tecnologias
 
-Terraform 1.10+, AWS (VPC, EKS, ECR, ELBv2, API Gateway v2, IAM), Helm,
+Terraform 1.10+, AWS (VPC, EKS, ECR, ELBv2, API Gateway v2, SNS, IAM), Helm, Datadog provider,
 módulos `terraform-aws-modules/vpc` e `terraform-aws-modules/eks`.
 
 ## Pré-requisitos
@@ -93,15 +98,19 @@ bootstrap (manual)
    └─► auto-repair-infra-k8s        (este repositório — cria a VPC)
           └─► auto-repair-infra-database   (RDS, lê a VPC do estado remoto)
                  └─► auto-repair-auth-lambda  (Lambda, lê VPC e banco)
-                        └─► auto-repair-api      (aplicação Rails no cluster)
+                        └─► auto-repair-api, auto-repair-billing-service,
+                            auto-repair-execution-service
+                            (cada pipeline aplica o Terraform do serviço e faz o deploy)
 ```
 
 ## Saídas publicadas
 
 `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `vpc_cidr`,
 `cluster_name`, `cluster_endpoint`, `node_security_group_id`,
-`ecr_repository_url`, `api_gateway_url`, `api_gateway_id`,
-`github_actions_role_arn`, `api_node_port`.
+`ecr_repository_url`, `ecr_repository_urls`, `node_ports`, `events_topic_arns`,
+`api_gateway_url`, `api_gateway_id`, `api_gateway_execution_arn`,
+`github_actions_role_arn`, `api_node_port`, `datadog_dashboard_url`,
+`datadog_saga_dashboard_url`.
 
 Consumidas pelos demais repositórios via `terraform_remote_state`.
 
@@ -109,8 +118,10 @@ Consumidas pelos demais repositórios via `terraform_remote_state`.
 
 `.github/workflows/terraform.yml`:
 
-- **Pull request** → `fmt -check`, `init`, `validate`, `plan`
-- **Push na `main`** → `apply` automático
+- **Pull request e push** → `validate`: `fmt -check`, `init -backend=false` e `validate`, sem AWS
+- **`plan`** e, na `main`, **`apply`** automático: só rodam quando a variável de
+  repositório `DEPLOY_ENABLED` vale `true`, porque o ambiente AWS só fica de pé durante
+  testes e demonstrações. Com ele no ar, podem ser disparados por *Run workflow*
 
 A autenticação com a AWS usa **OIDC**: o workflow assume a role
 `auto-repair-github-actions` por token de curta duração, sem access key
@@ -129,8 +140,13 @@ armazenada nos Secrets do GitHub.
 | `kubernetes_version` | `1.31` | Versão do EKS |
 | `node_instance_type` | `t3.medium` | Tipo dos nós |
 | `node_desired_size` / `node_max_size` | `2` / `4` | Tamanho do node group |
-| `api_node_port` | `30080` | NodePort alvo do NLB |
+| `api_node_port` / `billing_node_port` / `execution_node_port` | `30080` / `30081` / `30082` | NodePort de cada serviço, alvo do NLB |
+| `environments` | `prod`, `homolog` | Um tópico SNS por ambiente |
+| `github_repositories` | todos os repositórios | Repositórios autorizados a assumir a role de CI |
 | `datadog_api_key` | `""` | Vazio desativa o agente |
+| `datadog_app_key` | `""` | Necessária para criar dashboards e monitores |
+| `datadog_site` | `datadoghq.com` | Site da conta Datadog |
+| `datadog_alert_email` | | Destino dos alertas |
 
 ## Decisões
 

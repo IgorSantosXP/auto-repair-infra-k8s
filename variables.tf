@@ -38,6 +38,22 @@ variable "api_node_port" {
   default = 30080
 }
 
+variable "billing_node_port" {
+  type    = number
+  default = 30081
+}
+
+variable "execution_node_port" {
+  type    = number
+  default = 30082
+}
+
+variable "environments" {
+  description = "Environments that get their own event topic (one namespace per environment in the cluster)"
+  type        = list(string)
+  default     = ["prod", "homolog"]
+}
+
 variable "github_owner" {
   type    = string
   default = "IgorSantosXP"
@@ -47,6 +63,8 @@ variable "github_repositories" {
   type = list(string)
   default = [
     "auto-repair-api",
+    "auto-repair-billing-service",
+    "auto-repair-execution-service",
     "auto-repair-infra-k8s",
     "auto-repair-infra-database",
     "auto-repair-auth-lambda"
