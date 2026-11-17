@@ -27,7 +27,20 @@ output "node_security_group_id" {
 }
 
 output "ecr_repository_url" {
-  value = aws_ecr_repository.api.repository_url
+  value = aws_ecr_repository.service["os"].repository_url
+}
+
+output "ecr_repository_urls" {
+  value = { for name, repo in aws_ecr_repository.service : name => repo.repository_url }
+}
+
+output "node_ports" {
+  value = { for name, svc in local.services : name => svc.node_port }
+}
+
+output "events_topic_arns" {
+  description = "SNS topic of the saga message bus, per environment"
+  value       = { for env, topic in aws_sns_topic.events : env => topic.arn }
 }
 
 output "api_gateway_url" {
@@ -48,6 +61,10 @@ output "api_node_port" {
 
 output "api_gateway_execution_arn" {
   value = aws_apigatewayv2_api.this.execution_arn
+}
+
+output "datadog_saga_dashboard_url" {
+  value = local.datadog_enabled ? "https://app.${var.datadog_site}/dashboard/${datadog_dashboard.saga[0].id}" : "Datadog desativado"
 }
 
 output "datadog_dashboard_url" {

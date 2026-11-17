@@ -118,3 +118,76 @@ resource "datadog_monitor" "auth_lambda_errors" {
   renotify_interval = 60
   tags              = ["project:auto-repair", "team:soat"]
 }
+
+resource "datadog_monitor" "saga_compensation_failed" {
+  count = local.datadog_enabled ? 1 : 0
+
+  name    = "[Auto Repair] Compensação da saga falhou"
+  type    = "metric alert"
+  message = <<-EOT
+    Uma saga de ordem de serviço não conseguiu ser compensada (ex.: o estorno no
+    Mercado Pago falhou). A OS foi cancelada, mas o cliente pode ter sido cobrado:
+    é preciso intervenção manual.
+
+    Abrir `GET /api/v1/service_orders/:id/saga` para ver os passos e buscar o
+    `saga_id` no Log Explorer (`@saga_id:<id>`) para seguir a saga nos 3 serviços.
+    ${local.alert_target}
+  EOT
+
+  query = "sum(last_5m):sum:auto_repair.saga.compensation_failed{*}.as_count() > 0"
+
+  monitor_thresholds {
+    critical = 0
+  }
+
+  notify_no_data    = false
+  renotify_interval = 60
+  tags              = ["project:auto-repair", "team:soat", "component:saga"]
+}
+
+resource "datadog_monitor" "saga_compensations" {
+  count = local.datadog_enabled ? 1 : 0
+
+  name    = "[Auto Repair] Volume alto de compensações da saga"
+  type    = "metric alert"
+  message = <<-EOT
+    Muitas sagas estão sendo compensadas (falta de estoque ou pagamento recusado).
+    A tag `reason` indica a causa. Conferir o dashboard "Saga e Microsserviços".
+    ${local.alert_target}
+  EOT
+
+  query = "sum(last_30m):sum:auto_repair.saga.compensating{*}.as_count() > 5"
+
+  monitor_thresholds {
+    critical = 5
+    warning  = 2
+  }
+
+  notify_no_data    = false
+  renotify_interval = 60
+  tags              = ["project:auto-repair", "team:soat", "component:saga"]
+}
+
+resource "datadog_monitor" "messaging_failures" {
+  count = local.datadog_enabled ? 1 : 0
+
+  name    = "[Auto Repair] Falhas no consumo de mensagens"
+  type    = "metric alert"
+  message = <<-EOT
+    Um worker está falhando ao processar mensagens do barramento. As mensagens
+    voltam para a fila e, após 3 tentativas, vão para a DLQ do serviço
+    (`auto-repair-<env>-<service>-dlq`). As tags `service` e `type` indicam onde.
+    ${local.alert_target}
+  EOT
+
+  query = "sum(last_10m):sum:auto_repair.messaging.failed{*} by {service}.as_count() > 5"
+
+  monitor_thresholds {
+    critical = 5
+    warning  = 1
+  }
+
+  notify_no_data    = false
+  renotify_interval = 30
+  tags              = ["project:auto-repair", "team:soat", "component:messaging"]
+}

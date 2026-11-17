@@ -32,6 +32,9 @@ module "eks" {
     kube-proxy     = {}
     vpc-cni        = {}
     metrics-server = {}
+    # Lets each service's pods assume their own IAM role (SNS/SQS/DynamoDB)
+    # through aws_eks_pod_identity_association, declared in the service repos.
+    eks-pod-identity-agent = {}
   }
 
   eks_managed_node_groups = {
@@ -56,10 +59,10 @@ module "eks" {
     }
 
     nlb_health_check = {
-      description = "NLB health check and traffic to the API NodePort"
+      description = "NLB health checks and traffic to the services NodePorts"
       protocol    = "tcp"
-      from_port   = var.api_node_port
-      to_port     = var.api_node_port
+      from_port   = min(var.api_node_port, var.billing_node_port, var.execution_node_port)
+      to_port     = max(var.api_node_port, var.billing_node_port, var.execution_node_port)
       type        = "ingress"
       cidr_blocks = [var.vpc_cidr]
     }

@@ -21,11 +21,16 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type = "HTTP"
 }
 
-resource "aws_apigatewayv2_integration" "api" {
+# One integration per service (each NLB listener forwards to that service's
+# NodePort). HTTP APIs pick the most specific route, so the OS Service
+# catch-all only receives what Billing and Execution don't own.
+resource "aws_apigatewayv2_integration" "service" {
+  for_each = local.services
+
   api_id             = aws_apigatewayv2_api.this.id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
-  integration_uri    = aws_lb_listener.api.arn
+  integration_uri    = aws_lb_listener.service[each.key].arn
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.this.id
 
@@ -35,16 +40,27 @@ resource "aws_apigatewayv2_integration" "api" {
   }
 }
 
-resource "aws_apigatewayv2_route" "api" {
+resource "aws_apigatewayv2_route" "service" {
+  for_each = local.service_routes
+
   api_id    = aws_apigatewayv2_api.this.id
-  route_key = "ANY /api/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+  route_key = each.value.route_key
+  target    = "integrations/${aws_apigatewayv2_integration.service[each.value.service].id}"
 }
 
-resource "aws_apigatewayv2_route" "health" {
-  api_id    = aws_apigatewayv2_api.this.id
-  route_key = "GET /up"
-  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+moved {
+  from = aws_apigatewayv2_integration.api
+  to   = aws_apigatewayv2_integration.service["os"]
+}
+
+moved {
+  from = aws_apigatewayv2_route.api
+  to   = aws_apigatewayv2_route.service["os:ANY /api/{proxy+}"]
+}
+
+moved {
+  from = aws_apigatewayv2_route.health
+  to   = aws_apigatewayv2_route.service["os:GET /up"]
 }
 
 resource "aws_cloudwatch_log_group" "api_gateway" {
@@ -67,6 +83,7 @@ resource "aws_apigatewayv2_stage" "default" {
       status         = "$context.status"
       responseLength = "$context.responseLength"
       latency        = "$context.responseLatency"
+      routeKey       = "$context.routeKey"
       integrationErr = "$context.integrationErrorMessage"
     })
   }
