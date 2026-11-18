@@ -59,4 +59,8 @@ resource "aws_eks_access_policy_association" "github_actions" {
   access_scope {
     type = "cluster"
   }
+
+  # Without it a fresh apply can create the association before the entry
+  # exists and fail with a 404.
+  depends_on = [aws_eks_access_entry.github_actions]
 }
